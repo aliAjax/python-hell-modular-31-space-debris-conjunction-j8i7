@@ -18,7 +18,8 @@ def build_handler(service, static_dir):
             actor = self.headers.get("X-User-Id", "").strip()
             role = self.headers.get("X-Role", "").strip()
             region = self.headers.get("X-Region", "").strip() or None
-            return actor, role, region
+            org = self.headers.get("X-Org-Id", "").strip() or None
+            return actor, role, region, org
 
         def _json_body(self):
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -58,6 +59,13 @@ def build_handler(service, static_dir):
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "audit":
                     item = service.get_item(int(parts[2]))
                     return self._send(200, {"events": item["audit"]})
+                if len(parts) == 4 and parts[:2] == ["api", "satellites"] and parts[3] == "fuel":
+                    fuel = service.get_fuel_account(parts[2])
+                    if fuel is None:
+                        return self._send(404, {"error": "fuel_account_not_found", "message": "卫星燃料账户不存在"})
+                    return self._send(200, fuel)
+                if len(parts) == 3 and parts[:2] == ["api", "plans"]:
+                    return self._send(200, service.get_plan(parts[2]))
                 if path == "/":
                     file_path = os.path.join(static_dir, "index.html")
                     with open(file_path, "rb") as handle:
@@ -70,9 +78,9 @@ def build_handler(service, static_dir):
                 return self._error(DomainError("invalid_request", str(exc), 400))
 
         def do_POST(self):
-            actor = role = region = None
+            actor = role = region = org = None
             try:
-                actor, role, region = self._identity()
+                actor, role, region, org = self._identity()
                 path = urlparse(self.path).path
                 payload = self._json_body()
                 parts = [part for part in path.split("/") if part]
@@ -85,7 +93,12 @@ def build_handler(service, static_dir):
                     if not action:
                         raise DomainError("action_required", "缺少 action", 400)
                     expected = payload.pop("expected_version", None)
-                    return self._send(200, service.act(int(parts[2]), action, payload, actor, role, expected, region))
+                    expected_fuel = payload.pop("expected_fuel_version", None)
+                    return self._send(200, service.act(int(parts[2]), action, payload, actor, role, expected, region, org, expected_fuel))
+                if len(parts) == 4 and parts[:2] == ["api", "satellites"] and parts[3] == "fuel":
+                    return self._send(200, service.set_fuel_quota(parts[2], payload, actor, role))
+                if len(parts) == 4 and parts[:2] == ["api", "plans"] and parts[3] == "retry":
+                    return self._send(200, service.retry_dispatch(parts[2], actor, role, org))
                 return self._send(404, {"error": "not_found", "message": "接口不存在"})
             except DomainError as exc:
                 return self._error(exc)

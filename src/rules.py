@@ -17,6 +17,25 @@ ENFORCE_REGION = False
 REGION_SENSITIVE_ACTIONS = set()
 ACTION_REQUIRES_VERSION = {"approve", "execute", "resolve", "cancel"}
 
+# 调度账：方案状态
+PLAN_QUEUED = "queued"            # 已排，占用燃料
+PLAN_UNSCHEDULED = "unscheduled"  # 未排，不占用燃料
+PLAN_EXECUTED = "executed"        # 已下发指令，燃料转为消耗，依据保留
+PLAN_INVALIDATED = "invalidated"  # 未执行即失效，释放占用
+
+# 未排原因
+REASON_FUEL_CAPACITY = "fuel_capacity_exceeded"   # 卫星燃料容量不足
+REASON_EVENT_BUDGET = "fuel_budget_exceeded"      # 单次事件预算不足
+
+# 指令下发步骤（按序）：reserve_fuel 确认占用 -> transmit_command 下发指令(不可回退) -> await_receipt 等待回执
+DISPATCH_STEPS = ["reserve_fuel", "transmit_command", "await_receipt"]
+DISPATCH_IN_PROGRESS = "in_progress"
+DISPATCH_COMPLETED = "completed"
+DISPATCH_FAILED = "failed"
+
+FUEL_QUOTA_ROLES = {"analyst", "coordinator"}
+DISPATCH_RETRY_ROLES = {"operator", "coordinator"}
+
 
 def assess(payload):
     ratio = float(payload.get("miss_distance_m", 0)) / max(float(payload.get("covariance_m", 1)), 1.0)
@@ -128,3 +147,28 @@ def apply_action(item, action, payload, actor, role):
         return "cancelled", current, {"reason": reason}
 
     raise DomainError("unknown_action", "不支持的操作")
+
+
+def plan_level(item):
+    assessment = item.get("payload", {}).get("assessment") or {}
+    return assessment.get("level", "low")
+
+
+def plan_tca(item):
+    return item.get("payload", {}).get("tca", "")
+
+
+def check_org(item, role, org):
+    # 运营方只能处理本机构事件；未携带机构头时不做归属校验（向后兼容）
+    if role == "operator" and org:
+        orgs = item.get("payload", {}).get("operating_organizations", [])
+        if orgs and org not in orgs:
+            raise DomainError("forbidden", "运营方不能处理本机构之外的事件", 403)
+
+
+def unscheduled_reason(fuel_cost, event_budget, available):
+    if fuel_cost > event_budget:
+        return REASON_EVENT_BUDGET
+    if fuel_cost > available:
+        return REASON_FUEL_CAPACITY
+    return None

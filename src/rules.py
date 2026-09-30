@@ -102,9 +102,6 @@ def apply_action(item, action, payload, actor, role):
         if current.get("conflict"):
             raise DomainError("unresolved_conflict", "存在未解决的运营方冲突意见", 409)
         fuel = _require_number(payload, "fuel_cost_m_s", 0)
-        budget = float(current.get("fuel_budget_m_s", 0))
-        if fuel > budget:
-            raise DomainError("fuel_budget_exceeded", "规避燃料超过预算", 409)
         window = _require_text(payload, "maneuver_window")
         current["approved_maneuver"] = {"fuel_cost_m_s": fuel, "maneuver_window": window}
         return "coordinating", current, {"approved_maneuver": current["approved_maneuver"]}

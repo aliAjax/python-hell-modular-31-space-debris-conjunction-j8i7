@@ -34,12 +34,17 @@ class WorkflowTest(unittest.TestCase):
         item = self.service.act(item["id"], "assess", {"hours_to_tca": 18}, "analyst-1", "analyst", item["version"])
         self.assertEqual(item["status"], "assessed")
         self.assertEqual(item["payload"]["assessment"]["level"], "high")
+        sat = self.service.register_satellite({
+            "satellite_id": "SAT-1", "organization": "Org-A", "fuel_quota_m_s": 5,
+        }, "coordinator-1", "coordinator")
         item = self.service.act(item["id"], "approve", {
             "fuel_cost_m_s": 2.5,
             "maneuver_window": "2026-09-28T08:00:00Z/2026-09-28T09:00:00Z",
-        }, "coordinator-1", "coordinator", item["version"])
+        }, "coordinator-1", "coordinator", item["version"], satellite_version=sat["version"])
         self.assertEqual(item["status"], "coordinating")
-        item = self.service.act(item["id"], "execute", {"command_ref": "CMD-7"}, "operator-1", "operator", item["version"])
+        plan = self.service.list_plans(item_id=item["id"])[0]
+        self.assertEqual(plan["state"], "scheduled")
+        item = self.service.act(item["id"], "execute", {"command_ref": "CMD-7"}, "operator-1", "operator", item["version"], organization="Org-A")
         item = self.service.act(item["id"], "resolve", {"report_ref": "RPT-7"}, "coordinator-1", "coordinator", item["version"])
         self.assertEqual(item["status"], "resolved")
         self.assertGreaterEqual(len(item["audit"]), 5)

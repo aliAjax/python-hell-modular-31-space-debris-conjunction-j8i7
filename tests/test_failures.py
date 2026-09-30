@@ -42,12 +42,12 @@ class FailureTest(unittest.TestCase):
     def test_version_conflict_and_conflicting_opinion(self):
         item = self.service.create_item(self.payload, "a", "analyst")
         item = self.service.act(item["id"], "assess", {"hours_to_tca": 2}, "a", "analyst", item["version"])
-        item = self.service.act(item["id"], "record_opinion", {"operator": "Org-A", "opinion": "reject", "reason": "unsafe"}, "operator-1", "operator", item["version"])
+        item = self.service.act(item["id"], "record_opinion", {"operator": "Org-A", "opinion": "reject", "reason": "unsafe"}, "operator-1", "operator", item["version"], organization="Org-A")
         with self.assertRaises(DomainError) as context:
             self.service.act(item["id"], "approve", {"fuel_cost_m_s": 1, "maneuver_window": "w"}, "c", "coordinator", item["version"])
         self.assertEqual(context.exception.code, "unresolved_conflict")
         with self.assertRaises(ConflictError):
-            self.service.act(item["id"], "record_opinion", {"operator": "Org-A", "opinion": "approve"}, "operator-1", "operator", item["version"] - 1)
+            self.service.act(item["id"], "record_opinion", {"operator": "Org-A", "opinion": "approve"}, "operator-1", "operator", item["version"] - 1, organization="Org-A")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,20 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><title>太空碎片接近协调</title>
-<body><h1>太空碎片接近预警与规避协调</h1><p>服务已启动。使用 JSON API 创建接近事件、记录来源、执行评估和协调动作。</p><pre>GET /health
-GET /api/state
+<body><h1>太空碎片接近预警与规避协调</h1>
+<p>服务已启动。卫星燃料、接近事件、规避方案、指令回执接成调度账：方案按等级和碰撞时刻排队占用燃料，余量不足返回未排原因；轨道修订或额度变化后未执行方案失效释放，已下发指令保留依据；并发批准按版本冲突重读；下发按方案号重试未完成步骤。</p>
+<pre>GET  /health
+GET  /api/state
+GET  /api/items
 POST /api/items
 POST /api/items/{id}/sources
-POST /api/items/{id}/actions</pre></body></html>
+POST /api/items/{id}/actions
+POST /api/satellites
+GET  /api/satellites
+GET  /api/satellites/{id}
+GET  /api/satellites/{id}/ledger
+POST /api/satellites/{id}/quota
+GET  /api/items/{id}/plans
+GET  /api/plans/{plan_no}
+POST /api/plans/{plan_no}/dispatch</pre>
+<p>身份头：<code>X-User-Id</code>、<code>X-Role</code>；运营方还需 <code>X-Organization</code>，越权返回 403。</p>
+</body></html>

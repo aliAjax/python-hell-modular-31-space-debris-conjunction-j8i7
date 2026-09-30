@@ -18,7 +18,8 @@ def build_handler(service, static_dir):
             actor = self.headers.get("X-User-Id", "").strip()
             role = self.headers.get("X-Role", "").strip()
             region = self.headers.get("X-Region", "").strip() or None
-            return actor, role, region
+            organization = self.headers.get("X-Organization", "").strip() or None
+            return actor, role, region, organization
 
         def _json_body(self):
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -52,12 +53,22 @@ def build_handler(service, static_dir):
                     return self._send(200, service.state())
                 if path == "/api/items":
                     return self._send(200, {"items": service.list_items()})
+                if path == "/api/satellites":
+                    return self._send(200, {"satellites": service.list_satellites()})
                 parts = [part for part in path.split("/") if part]
                 if len(parts) == 3 and parts[:2] == ["api", "items"]:
                     return self._send(200, service.get_item(int(parts[2])))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "audit":
                     item = service.get_item(int(parts[2]))
                     return self._send(200, {"events": item["audit"]})
+                if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "plans":
+                    return self._send(200, {"plans": service.list_plans(item_id=int(parts[2]))})
+                if parts[:2] == ["api", "satellites"] and len(parts) == 3:
+                    return self._send(200, service.get_satellite(parts[2]))
+                if parts[:2] == ["api", "satellites"] and len(parts) == 4 and parts[3] == "ledger":
+                    return self._send(200, {"ledger": service.fuel_ledger(parts[2])})
+                if parts[:2] == ["api", "plans"] and len(parts) == 3:
+                    return self._send(200, service.get_plan(parts[2]))
                 if path == "/":
                     file_path = os.path.join(static_dir, "index.html")
                     with open(file_path, "rb") as handle:
@@ -70,22 +81,34 @@ def build_handler(service, static_dir):
                 return self._error(DomainError("invalid_request", str(exc), 400))
 
         def do_POST(self):
-            actor = role = region = None
+            actor = role = region = organization = None
             try:
-                actor, role, region = self._identity()
+                actor, role, region, organization = self._identity()
                 path = urlparse(self.path).path
                 payload = self._json_body()
                 parts = [part for part in path.split("/") if part]
                 if parts == ["api", "items"]:
                     return self._send(201, service.create_item(payload, actor, role, region))
+                if parts == ["api", "satellites"]:
+                    return self._send(201, service.register_satellite(payload, actor, role, organization))
+                if len(parts) == 4 and parts[:2] == ["api", "satellites"] and parts[3] == "quota":
+                    expected = payload.pop("expected_version", None)
+                    return self._send(200, service.adjust_fuel_quota(
+                        parts[2], payload, actor, role, expected, organization))
+                if parts[:2] == ["api", "plans"] and len(parts) == 4 and parts[3] == "dispatch":
+                    return self._send(200, service.dispatch_plan(parts[2], actor, role, organization))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "sources":
-                    return self._send(201, service.add_source(int(parts[2]), payload, actor, role, region))
+                    return self._send(201, service.add_source(
+                        int(parts[2]), payload, actor, role, region, organization))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "actions":
                     action = payload.pop("action", "")
                     if not action:
                         raise DomainError("action_required", "缺少 action", 400)
                     expected = payload.pop("expected_version", None)
-                    return self._send(200, service.act(int(parts[2]), action, payload, actor, role, expected, region))
+                    satellite_version = payload.pop("satellite_version", None)
+                    return self._send(200, service.act(
+                        int(parts[2]), action, payload, actor, role, expected, region,
+                        organization, satellite_version))
                 return self._send(404, {"error": "not_found", "message": "接口不存在"})
             except DomainError as exc:
                 return self._error(exc)
